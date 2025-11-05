@@ -8,13 +8,28 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use serde_json::Value;
 
-use crate::models::{JsonRpcErrorCode, JsonRpcErrorResponse, JsonRpcRequest};
-use crate::services::JsonRpcService;
+use super::super::application::JsonRpcService;
+use super::super::domain::{JsonRpcErrorCode, JsonRpcErrorResponse, JsonRpcRequest};
 
 /// WebSocket handler for the /live endpoint
 ///
-/// Upgrades the HTTP connection to WebSocket and handles JSON-RPC messages.
-/// Follows clean code principles with clear separation of concerns.
+/// Presentation layer handler that upgrades HTTP to WebSocket and
+/// processes JSON-RPC messages.
+///
+/// # Route
+/// WebSocket: ws://127.0.0.1:3000/live
+///
+/// # Protocol
+/// JSON-RPC 2.0 over WebSocket
+///
+/// # Example
+/// ```json
+/// // Request
+/// {"jsonrpc":"2.0","method":"ping","id":1}
+///
+/// // Response
+/// {"jsonrpc":"2.0","result":{"pong":true,"timestamp":1699564800},"id":1}
+/// ```
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(jsonrpc_service): State<JsonRpcService>,
@@ -143,6 +158,7 @@ fn create_internal_error() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[tokio::test]
     async fn test_process_valid_request() {

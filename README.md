@@ -4,42 +4,78 @@ A production-ready web server built with Axum following clean code principles an
 
 ## Architecture
 
-### Clean Architecture Layers
+### Modular Clean Architecture
+
+This project uses a **modular architecture** organized by both **layer** and **feature**:
 
 ```
-┌─────────────────────────────────────┐
-│      Presentation Layer             │
-│      (handlers/)                    │
-│  HTTP request/response handling     │
-├─────────────────────────────────────┤
-│      Application Layer              │
-│      (services/)                    │
-│  Business logic & orchestration     │
-├─────────────────────────────────────┤
-│      Domain Layer                   │
-│      (models/)                      │
-│  Core business entities & rules     │
-├─────────────────────────────────────┤
-│      Infrastructure Layer           │
-│   (config.rs, error.rs, main.rs)   │
-│  Configuration, logging, errors     │
-└─────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│              Infrastructure Layer                │
+│         (Configuration, Errors, Logging)         │
+└──────────────────────────────────────────────────┘
+           ↓              ↓              ↓
+┌─────────────────┬─────────────────┬──────────────────┐
+│  Health Feature │  Users Feature  │  JSON-RPC Feature│
+│                 │                 │                  │
+│  ┌──────────┐   │  ┌──────────┐   │  ┌──────────┐    │
+│  │ Domain   │   │  │ Domain   │   │  │ Domain   │    │
+│  └──────────┘   │  └──────────┘   │  └──────────┘    │
+│                 │  ┌──────────┐   │  ┌──────────┐    │
+│                 │  │Application│  │  │Application│   │
+│                 │  └──────────┘   │  └──────────┘    │
+│  ┌──────────┐   │  ┌──────────┐   │  ┌──────────┐    │
+│  │Presentation│ │  │Presentation│ │  │Presentation│  │
+│  └──────────┘   │  └──────────┘   │  └──────────┘    │
+└─────────────────┴─────────────────┴──────────────────┘
 ```
 
 ### Project Structure
 
 ```
 src/
-├── main.rs              # Entry point, server setup, middleware
-├── config.rs            # Environment-based configuration
-├── error.rs             # Custom error types with IntoResponse
-├── handlers/            # HTTP handlers (presentation layer)
-│   └── mod.rs           # Health check, CRUD endpoints
-├── services/            # Business logic (application layer)
-│   └── mod.rs           # UserService with validation
-└── models/              # Domain models
-    └── mod.rs           # User, request/response types
+├── main.rs                          # Entry point, server setup, routing
+│
+├── infrastructure/                  # Infrastructure Layer
+│   ├── mod.rs                       # Cross-cutting concerns
+│   ├── config.rs                    # Environment configuration
+│   └── error.rs                     # Application-wide error types
+│
+└── features/                        # Feature Modules
+    ├── mod.rs                       # Feature module registry
+    │
+    ├── health/                      # Health Check Feature
+    │   ├── mod.rs
+    │   ├── domain.rs                # HealthResponse model
+    │   └── handler.rs               # HTTP handler (presentation)
+    │
+    ├── users/                       # Users Feature
+    │   ├── mod.rs
+    │   ├── domain.rs                # User, CreateUserRequest models
+    │   ├── service.rs               # UserService (application logic)
+    │   └── handler.rs               # HTTP handlers (presentation)
+    │
+    └── jsonrpc/                     # JSON-RPC WebSocket Feature
+        ├── mod.rs
+        ├── domain/                  # Domain Layer
+        │   ├── mod.rs
+        │   ├── message.rs           # Request/Response types
+        │   └── error_code.rs        # Error codes and objects
+        ├── application/             # Application Layer
+        │   ├── mod.rs
+        │   └── service.rs           # JsonRpcService
+        └── presentation/            # Presentation Layer
+            ├── mod.rs
+            └── handler.rs           # WebSocket handler
 ```
+
+### Architecture Benefits
+
+1. **High Cohesion**: Related code grouped by feature
+2. **Low Coupling**: Features are independent and self-contained
+3. **Scalability**: Easy to add new features without affecting existing ones
+4. **Maintainability**: Clear structure makes code easy to find and understand
+5. **Testability**: Each layer can be tested independently
+6. **Clear Dependencies**: Domain → Application → Presentation flow
 
 ## Features
 

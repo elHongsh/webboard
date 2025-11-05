@@ -1,11 +1,12 @@
-use crate::models::{
-    JsonRpcErrorCode, JsonRpcErrorObject, JsonRpcErrorResponse, JsonRpcRequest, JsonRpcResponse,
-};
 use anyhow::Result;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+use super::super::domain::{
+    JsonRpcErrorCode, JsonRpcErrorObject, JsonRpcErrorResponse, JsonRpcRequest, JsonRpcResponse,
+};
 
 /// Type alias for JSON-RPC method handlers
 ///
@@ -19,8 +20,15 @@ type MethodHandler = Arc<
 
 /// JSON-RPC Service
 ///
-/// Manages method registration and dispatching for JSON-RPC requests.
+/// Application layer service that manages method registration and dispatching.
 /// Follows the Single Responsibility Principle by only handling RPC logic.
+///
+/// ## Responsibilities
+/// - Register and manage method handlers
+/// - Dispatch requests to appropriate handlers
+/// - Handle notifications (no response)
+/// - Validate requests
+/// - Generate appropriate error responses
 #[derive(Clone)]
 pub struct JsonRpcService {
     /// Registry of available methods
@@ -249,7 +257,7 @@ mod tests {
         let service = JsonRpcService::new();
 
         let request = JsonRpcRequest::new(
-            "nonexistent".to_string(),
+            "nonexistent_method".to_string(),
             None,
             Some(json!(1)),
         );
