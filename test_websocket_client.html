@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket JSON-RPC Test Client</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .connection-status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .control-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, textarea, select, button {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .button-group button {
+            margin: 0;
+        }
+        #messages {
+            border: 1px solid #ddd;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border-radius: 4px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .sent {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .received {
+            background-color: #f1f8e9;
+            border-left: 4px solid #4caf50;
+        }
+        .error {
+            background-color: #ffebee;
+            border-left: 4px solid #f44336;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 10px;
+        }
+        pre {
+            margin: 5px 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebSocket JSON-RPC Test Client</h1>
+
+        <div id="status" class="connection-status disconnected">
+            Status: Disconnected
+        </div>
+
+        <div class="control-group">
+            <label for="wsUrl">WebSocket URL:</label>
+            <input type="text" id="wsUrl" value="ws://127.0.0.1:3000/live" />
+        </div>
+
+        <button id="connectBtn" onclick="connect()">Connect</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+
+        <h2>Send JSON-RPC Request</h2>
+
+        <div class="control-group">
+            <label for="method">Method:</label>
+            <select id="method" onchange="updateParamsPlaceholder()">
+                <option value="ping">ping</option>
+                <option value="echo">echo</option>
+                <option value="add">add</option>
+                <option value="getServerInfo">getServerInfo</option>
+                <option value="custom">Custom...</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="params">Parameters (JSON):</label>
+            <textarea id="params" rows="4" placeholder='{"param": "value"}'></textarea>
+        </div>
+
+        <div class="control-group">
+            <label for="requestId">Request ID (leave empty for notification):</label>
+            <input type="text" id="requestId" value="1" placeholder="1" />
+        </div>
+
+        <button onclick="sendRequest()">Send Request</button>
+
+        <div class="button-group">
+            <button onclick="sendPing()">Quick: Ping</button>
+            <button onclick="sendEcho()">Quick: Echo</button>
+            <button onclick="sendAdd()">Quick: Add (5+3)</button>
+            <button onclick="sendServerInfo()">Quick: Server Info</button>
+            <button onclick="clearMessages()">Clear Messages</button>
+        </div>
+
+        <h2>Messages</h2>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let requestCounter = 1;
+
+        function connect() {
+            const url = document.getElementById('wsUrl').value;
+
+            try {
+                ws = new WebSocket(url);
+
+                ws.onopen = function() {
+                    updateStatus(true);
+                    addMessage('Connected to ' + url, 'received');
+                };
+
+                ws.onmessage = function(event) {
+                    addMessage(event.data, 'received');
+                };
+
+                ws.onerror = function(error) {
+                    addMessage('WebSocket Error: ' + error, 'error');
+                };
+
+                ws.onclose = function() {
+                    updateStatus(false);
+                    addMessage('Connection closed', 'error');
+                };
+            } catch (error) {
+                addMessage('Failed to connect: ' + error, 'error');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function updateStatus(connected) {
+            const statusDiv = document.getElementById('status');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+
+            if (connected) {
+                statusDiv.className = 'connection-status connected';
+                statusDiv.textContent = 'Status: Connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusDiv.className = 'connection-status disconnected';
+                statusDiv.textContent = 'Status: Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        function sendRequest() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage('Not connected!', 'error');
+                return;
+            }
+
+            const method = document.getElementById('method').value === 'custom'
+                ? prompt('Enter method name:')
+                : document.getElementById('method').value;
+
+            const paramsText = document.getElementById('params').value.trim();
+            const requestId = document.getElementById('requestId').value.trim();
+
+            let params = null;
+            if (paramsText) {
+                try {
+                    params = JSON.parse(paramsText);
+                } catch (e) {
+                    addMessage('Invalid JSON in parameters: ' + e, 'error');
+                    return;
+                }
+            }
+
+            const request = {
+                jsonrpc: '2.0',
+                method: method
+            };
+
+            if (params !== null) {
+                request.params = params;
+            }
+
+            if (requestId) {
+                try {
+                    request.id = isNaN(requestId) ? requestId : parseInt(requestId);
+                } catch (e) {
+                    request.id = requestId;
+                }
+            }
+
+            const message = JSON.stringify(request, null, 2);
+            ws.send(message);
+            addMessage(message, 'sent');
+
+            // Auto-increment request ID
+            if (requestId && !isNaN(requestId)) {
+                document.getElementById('requestId').value = parseInt(requestId) + 1;
+            }
+        }
+
+        function sendPing() {
+            setMethod('ping', null);
+            sendRequest();
+        }
+
+        function sendEcho() {
+            setMethod('echo', { message: 'Hello, WebSocket!' });
+            sendRequest();
+        }
+
+        function sendAdd() {
+            setMethod('add', [5, 3]);
+            sendRequest();
+        }
+
+        function sendServerInfo() {
+            setMethod('getServerInfo', null);
+            sendRequest();
+        }
+
+        function setMethod(method, params) {
+            document.getElementById('method').value = method;
+            document.getElementById('params').value = params ? JSON.stringify(params, null, 2) : '';
+            updateParamsPlaceholder();
+        }
+
+        function updateParamsPlaceholder() {
+            const method = document.getElementById('method').value;
+            const paramsField = document.getElementById('params');
+
+            const examples = {
+                ping: '',
+                echo: '{"message": "Hello!"}',
+                add: '[10, 20]',
+                getServerInfo: ''
+            };
+
+            paramsField.placeholder = examples[method] || '{"param": "value"}';
+        }
+
+        function addMessage(text, type) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + type;
+
+            const timestamp = new Date().toLocaleTimeString();
+
+            let label = type === 'sent' ? 'SENT' : type === 'received' ? 'RECEIVED' : 'ERROR';
+
+            messageDiv.innerHTML = `
+                <div class="timestamp">[${timestamp}] ${label}</div>
+                <pre>${escapeHtml(text)}</pre>
+            `;
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize
+        updateParamsPlaceholder();
+    </script>
+</body>
+</html>

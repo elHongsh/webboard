@@ -1,8 +1,6 @@
-mod config;
-mod error;
-mod handlers;
-mod models;
-mod services;
+// Module declarations
+mod features;
+mod infrastructure;
 
 use axum::{
     extract::DefaultBodyLimit,
@@ -10,8 +8,7 @@ use axum::{
     routing::get,
     Router,
 };
-use config::AppConfig;
-use services::UserService;
+use infrastructure::AppConfig;
 use std::time::Duration;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer};
@@ -34,10 +31,14 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Starting server with config: {:?}", config);
 
     // Initialize services
-    let user_service = UserService::new();
+    let user_service = features::UserService::new();
+    let jsonrpc_service = features::JsonRpcService::new();
+
+    // Give time for JSON-RPC builtin methods to register
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     // Build application with routes and middleware
-    let app = build_app(config.clone(), user_service);
+    let app = build_app(config.clone(), user_service, jsonrpc_service);
 
     // Create TCP listener
     let listener = tokio::net::TcpListener::bind(&config.address()).await?;
@@ -53,16 +54,33 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Build the application router with all routes and middleware
-fn build_app(config: AppConfig, user_service: UserService) -> Router {
-    // Build API routes
+///
+/// Organizes routes by feature with clear separation:
+/// - Health check at /health
+/// - WebSocket JSON-RPC at /live
+/// - Users API at /api/v1/users
+fn build_app(
+    config: AppConfig,
+    user_service: features::UserService,
+    jsonrpc_service: features::JsonRpcService,
+) -> Router {
+    // Build Users API routes
     let api_routes = Router::new()
-        .route("/users", get(handlers::list_users).post(handlers::create_user))
-        .route("/users/:id", get(handlers::get_user))
+        .route(
+            "/users",
+            get(features::list_users).post(features::create_user),
+        )
+        .route("/users/:id", get(features::get_user))
         .with_state(user_service);
 
     // Build main router
     Router::new()
-        .route("/health", get(handlers::health_check))
+        // Health check endpoint
+        .route("/health", get(features::health_check))
+        // WebSocket JSON-RPC endpoint
+        .route("/live", get(features::websocket_handler))
+        .with_state(jsonrpc_service.clone())
+        // Nest API routes under /api/v1
         .nest("/api/v1", api_routes)
         // Set a request body size limit
         .layer(DefaultBodyLimit::max(config.max_body_size))

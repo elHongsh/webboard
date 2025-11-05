@@ -4,47 +4,84 @@ A production-ready web server built with Axum following clean code principles an
 
 ## Architecture
 
-### Clean Architecture Layers
+### Modular Clean Architecture
+
+This project uses a **modular architecture** organized by both **layer** and **feature**:
 
 ```
-┌─────────────────────────────────────┐
-│      Presentation Layer             │
-│      (handlers/)                    │
-│  HTTP request/response handling     │
-├─────────────────────────────────────┤
-│      Application Layer              │
-│      (services/)                    │
-│  Business logic & orchestration     │
-├─────────────────────────────────────┤
-│      Domain Layer                   │
-│      (models/)                      │
-│  Core business entities & rules     │
-├─────────────────────────────────────┤
-│      Infrastructure Layer           │
-│   (config.rs, error.rs, main.rs)   │
-│  Configuration, logging, errors     │
-└─────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│              Infrastructure Layer                │
+│         (Configuration, Errors, Logging)         │
+└──────────────────────────────────────────────────┘
+           ↓              ↓              ↓
+┌─────────────────┬─────────────────┬──────────────────┐
+│  Health Feature │  Users Feature  │  JSON-RPC Feature│
+│                 │                 │                  │
+│  ┌──────────┐   │  ┌──────────┐   │  ┌──────────┐    │
+│  │ Domain   │   │  │ Domain   │   │  │ Domain   │    │
+│  └──────────┘   │  └──────────┘   │  └──────────┘    │
+│                 │  ┌──────────┐   │  ┌──────────┐    │
+│                 │  │Application│  │  │Application│   │
+│                 │  └──────────┘   │  └──────────┘    │
+│  ┌──────────┐   │  ┌──────────┐   │  ┌──────────┐    │
+│  │Presentation│ │  │Presentation│ │  │Presentation│  │
+│  └──────────┘   │  └──────────┘   │  └──────────┘    │
+└─────────────────┴─────────────────┴──────────────────┘
 ```
 
 ### Project Structure
 
 ```
 src/
-├── main.rs              # Entry point, server setup, middleware
-├── config.rs            # Environment-based configuration
-├── error.rs             # Custom error types with IntoResponse
-├── handlers/            # HTTP handlers (presentation layer)
-│   └── mod.rs           # Health check, CRUD endpoints
-├── services/            # Business logic (application layer)
-│   └── mod.rs           # UserService with validation
-└── models/              # Domain models
-    └── mod.rs           # User, request/response types
+├── main.rs                          # Entry point, server setup, routing
+│
+├── infrastructure/                  # Infrastructure Layer
+│   ├── mod.rs                       # Cross-cutting concerns
+│   ├── config.rs                    # Environment configuration
+│   └── error.rs                     # Application-wide error types
+│
+└── features/                        # Feature Modules
+    ├── mod.rs                       # Feature module registry
+    │
+    ├── health/                      # Health Check Feature
+    │   ├── mod.rs
+    │   ├── domain.rs                # HealthResponse model
+    │   └── handler.rs               # HTTP handler (presentation)
+    │
+    ├── users/                       # Users Feature
+    │   ├── mod.rs
+    │   ├── domain.rs                # User, CreateUserRequest models
+    │   ├── service.rs               # UserService (application logic)
+    │   └── handler.rs               # HTTP handlers (presentation)
+    │
+    └── jsonrpc/                     # JSON-RPC WebSocket Feature
+        ├── mod.rs
+        ├── domain/                  # Domain Layer
+        │   ├── mod.rs
+        │   ├── message.rs           # Request/Response types
+        │   └── error_code.rs        # Error codes and objects
+        ├── application/             # Application Layer
+        │   ├── mod.rs
+        │   └── service.rs           # JsonRpcService
+        └── presentation/            # Presentation Layer
+            ├── mod.rs
+            └── handler.rs           # WebSocket handler
 ```
+
+### Architecture Benefits
+
+1. **High Cohesion**: Related code grouped by feature
+2. **Low Coupling**: Features are independent and self-contained
+3. **Scalability**: Easy to add new features without affecting existing ones
+4. **Maintainability**: Clear structure makes code easy to find and understand
+5. **Testability**: Each layer can be tested independently
+6. **Clear Dependencies**: Domain → Application → Presentation flow
 
 ## Features
 
 ### Core Capabilities
 - RESTful API with clean routing structure
+- **WebSocket with JSON-RPC 2.0 protocol** at `/live` endpoint
 - Environment-based configuration
 - Structured logging with tracing
 - Graceful shutdown handling
@@ -83,6 +120,14 @@ GET /health
 Response: {"status": "healthy", "version": "0.1.0"}
 ```
 
+### WebSocket JSON-RPC Endpoint
+```
+WebSocket: ws://127.0.0.1:3000/live
+Protocol: JSON-RPC 2.0
+```
+
+The `/live` endpoint provides a WebSocket connection that uses the JSON-RPC 2.0 protocol for real-time bidirectional communication.
+
 ### Users API
 
 **List Users**
@@ -119,6 +164,264 @@ Error types:
 - `NOT_FOUND` (404): Resource not found
 - `BAD_REQUEST` (400): Invalid input or validation error
 - `INTERNAL_SERVER_ERROR` (500): Server-side error
+
+## WebSocket JSON-RPC API
+
+### Overview
+
+The WebSocket endpoint at `/live` implements the JSON-RPC 2.0 specification, providing a standardized protocol for real-time communication.
+
+### JSON-RPC 2.0 Protocol
+
+**Request Format:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "method_name",
+  "params": {...},
+  "id": 1
+}
+```
+
+**Success Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {...},
+  "id": 1
+}
+```
+
+**Error Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32601,
+    "message": "Method not found"
+  },
+  "id": 1
+}
+```
+
+**Notification (no response expected):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "method_name",
+  "params": {...}
+}
+```
+*Note: Notifications omit the `id` field and don't receive a response.*
+
+### Built-in JSON-RPC Methods
+
+#### `ping`
+Health check method that returns server timestamp.
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "ping",
+  "id": 1
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "pong": true,
+    "timestamp": 1699564800
+  },
+  "id": 1
+}
+```
+
+#### `echo`
+Echoes back the parameters sent.
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "echo",
+  "params": {"message": "Hello, World!"},
+  "id": 2
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {"message": "Hello, World!"},
+  "id": 2
+}
+```
+
+#### `add`
+Adds two numbers together.
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "add",
+  "params": [5, 3],
+  "id": 3
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": 8,
+  "id": 3
+}
+```
+
+#### `getServerInfo`
+Returns information about the server and its capabilities.
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "getServerInfo",
+  "id": 4
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "name": "webboard",
+    "version": "0.1.0",
+    "jsonrpc_version": "2.0",
+    "capabilities": ["echo", "ping", "add", "getServerInfo"]
+  },
+  "id": 4
+}
+```
+
+### JSON-RPC Error Codes
+
+Standard JSON-RPC 2.0 error codes:
+
+| Code   | Message           | Meaning                                    |
+|--------|-------------------|--------------------------------------------|
+| -32700 | Parse error       | Invalid JSON received                      |
+| -32600 | Invalid Request   | JSON is not a valid Request object         |
+| -32601 | Method not found  | The method does not exist                  |
+| -32602 | Invalid params    | Invalid method parameters                  |
+| -32603 | Internal error    | Internal JSON-RPC error                    |
+| -32000 | Server error      | Implementation-defined server error        |
+
+### Testing the WebSocket API
+
+#### Using the HTML Test Client
+
+Open `test_websocket_client.html` in your browser:
+
+```bash
+# Start the server
+cargo run
+
+# Open the HTML file in your browser
+open test_websocket_client.html  # macOS
+# or
+xdg-open test_websocket_client.html  # Linux
+# or simply drag and drop it into your browser
+```
+
+The HTML client provides:
+- Connection management
+- Pre-built method calls (ping, echo, add, getServerInfo)
+- Custom request builder
+- Real-time message log
+- Error handling
+
+#### Using the Python Test Client
+
+```bash
+# Install dependencies
+pip install websockets
+
+# Run automated tests
+python test_websocket_client.py
+
+# Run in interactive mode
+python test_websocket_client.py --interactive
+```
+
+#### Using wscat (Command Line)
+
+```bash
+# Install wscat
+npm install -g wscat
+
+# Connect to the WebSocket
+wscat -c ws://127.0.0.1:3000/live
+
+# Send a ping request
+> {"jsonrpc":"2.0","method":"ping","id":1}
+
+# Send an echo request
+> {"jsonrpc":"2.0","method":"echo","params":{"message":"Hello"},"id":2}
+
+# Send an add request
+> {"jsonrpc":"2.0","method":"add","params":[10,20],"id":3}
+```
+
+#### Using JavaScript (Browser Console or Node.js)
+
+```javascript
+const ws = new WebSocket('ws://127.0.0.1:3000/live');
+
+ws.onopen = () => {
+    console.log('Connected');
+
+    // Send a ping request
+    ws.send(JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'ping',
+        id: 1
+    }));
+};
+
+ws.onmessage = (event) => {
+    console.log('Received:', JSON.parse(event.data));
+};
+
+ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+};
+```
+
+### Extending with Custom Methods
+
+The JSON-RPC service can be easily extended with custom methods. Example:
+
+```rust
+// In main.rs or a service file
+jsonrpc_service.register_method("custom_method".to_string(), |params| async move {
+    // Your business logic here
+    let result = process_params(params)?;
+    Ok(json!(result))
+}).await;
+```
+
+The architecture follows clean code principles:
+- **Single Responsibility**: Each component has one clear purpose
+- **Open/Closed**: Easy to add new methods without modifying existing code
+- **Type Safety**: Strongly typed messages and error handling
+- **Separation of Concerns**: Clear layers (models, services, handlers)
 
 ## Configuration
 
@@ -182,14 +485,17 @@ In-flight requests are allowed to complete before shutdown.
 
 ## Dependencies
 
-- **axum**: Web application framework
+- **axum**: Web application framework (with WebSocket support)
 - **tokio**: Async runtime
 - **tower**: Service middleware
 - **tower-http**: HTTP-specific middleware
 - **serde**: Serialization/deserialization
+- **serde_json**: JSON serialization
 - **tracing**: Structured logging
 - **anyhow**: Error handling utilities
 - **thiserror**: Error trait derivation
+- **futures**: Async utilities for WebSocket handling
+- **chrono**: Date/time utilities for timestamps
 
 ## License
 

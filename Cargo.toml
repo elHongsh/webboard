@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 # Web framework
-axum = "0.7"
+axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4", features = ["timeout"] }
 tower-http = { version = "0.5", features = ["trace", "cors", "timeout", "limit"] }
@@ -24,3 +24,9 @@ dotenvy = "0.15"
 # Error handling
 anyhow = "1"
 thiserror = "1"
+
+# Async utilities
+futures = "0.3"
+
+# Date/time utilities
+chrono = "0.4"
