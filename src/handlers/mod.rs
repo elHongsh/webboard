@@ -1,3 +1,5 @@
+pub mod websocket;
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -8,6 +10,8 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::models::{CreateUserRequest, HealthResponse, User};
 use crate::services::UserService;
+
+pub use websocket::websocket_handler;
 
 /// Health check handler
 pub async fn health_check() -> Json<HealthResponse> {

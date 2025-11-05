@@ -1,7 +1,11 @@
+pub mod jsonrpc_service;
+
 use crate::error::AppError;
 use crate::models::{CreateUserRequest, User};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+
+pub use jsonrpc_service::JsonRpcService;
 
 /// User service containing business logic
 #[derive(Clone)]

@@ -1,4 +1,8 @@
+pub mod jsonrpc;
+
 use serde::{Deserialize, Serialize};
+
+pub use jsonrpc::*;
 
 /// User domain model
 #[derive(Debug, Clone, Serialize, Deserialize)]

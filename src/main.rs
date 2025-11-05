@@ -11,7 +11,7 @@ use axum::{
     Router,
 };
 use config::AppConfig;
-use services::UserService;
+use services::{JsonRpcService, UserService};
 use std::time::Duration;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer};
@@ -35,9 +35,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize services
     let user_service = UserService::new();
+    let jsonrpc_service = JsonRpcService::new();
+
+    // Give time for JSON-RPC builtin methods to register
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     // Build application with routes and middleware
-    let app = build_app(config.clone(), user_service);
+    let app = build_app(config.clone(), user_service, jsonrpc_service);
 
     // Create TCP listener
     let listener = tokio::net::TcpListener::bind(&config.address()).await?;
@@ -53,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Build the application router with all routes and middleware
-fn build_app(config: AppConfig, user_service: UserService) -> Router {
+fn build_app(config: AppConfig, user_service: UserService, jsonrpc_service: JsonRpcService) -> Router {
     // Build API routes
     let api_routes = Router::new()
         .route("/users", get(handlers::list_users).post(handlers::create_user))
@@ -63,6 +67,8 @@ fn build_app(config: AppConfig, user_service: UserService) -> Router {
     // Build main router
     Router::new()
         .route("/health", get(handlers::health_check))
+        .route("/live", get(handlers::websocket_handler))
+        .with_state(jsonrpc_service.clone())
         .nest("/api/v1", api_routes)
         // Set a request body size limit
         .layer(DefaultBodyLimit::max(config.max_body_size))
