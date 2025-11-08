@@ -13,6 +13,8 @@ pub struct AppConfig {
     pub request_timeout_secs: u64,
     /// Maximum request body size in bytes
     pub max_body_size: usize,
+    /// JWT secret key for token signing
+    pub jwt_secret: String,
 }
 
 impl AppConfig {
@@ -35,6 +37,8 @@ impl AppConfig {
             .unwrap_or_else(|_| "2097152".to_string()) // 2MB default
             .parse()
             .unwrap_or(2_097_152);
+        let jwt_secret = env::var("JWT_SECRET")
+            .unwrap_or_else(|_| "default-secret-key-change-in-production".to_string());
 
         Ok(Self {
             host,
@@ -42,6 +46,7 @@ impl AppConfig {
             log_level,
             request_timeout_secs,
             max_body_size,
+            jwt_secret,
         })
     }
 

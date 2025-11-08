@@ -5,7 +5,7 @@ mod infrastructure;
 use axum::{
     extract::DefaultBodyLimit,
     http::{HeaderValue, Method},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use infrastructure::AppConfig;
@@ -33,12 +33,13 @@ async fn main() -> anyhow::Result<()> {
     // Initialize services
     let user_service = features::UserService::new();
     let jsonrpc_service = features::JsonRpcService::new();
+    let auth_service = features::AuthService::new(config.jwt_secret.clone());
 
     // Give time for JSON-RPC builtin methods to register
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     // Build application with routes and middleware
-    let app = build_app(config.clone(), user_service, jsonrpc_service);
+    let app = build_app(config.clone(), user_service, jsonrpc_service, auth_service);
 
     // Create TCP listener
     let listener = tokio::net::TcpListener::bind(&config.address()).await?;
@@ -58,12 +59,25 @@ async fn main() -> anyhow::Result<()> {
 /// Organizes routes by feature with clear separation:
 /// - Health check at /health
 /// - WebSocket JSON-RPC at /live
+/// - Auth API at /api/v1/auth
 /// - Users API at /api/v1/users
 fn build_app(
     config: AppConfig,
     user_service: features::UserService,
     jsonrpc_service: features::JsonRpcService,
+    auth_service: features::AuthService,
 ) -> Router {
+    // Build Auth API routes
+    let auth_routes = Router::new()
+        .route("/register", post(features::register))
+        .route("/login", post(features::login))
+        .route("/anonymous", post(features::anonymous_token))
+        .route("/me", get(features::me).layer(axum::middleware::from_fn_with_state(
+            auth_service.clone(),
+            features::auth_middleware,
+        )))
+        .with_state(auth_service.clone());
+
     // Build Users API routes
     let api_routes = Router::new()
         .route(
@@ -71,7 +85,8 @@ fn build_app(
             get(features::list_users).post(features::create_user),
         )
         .route("/users/:id", get(features::get_user))
-        .with_state(user_service);
+        .with_state(user_service)
+        .merge(Router::new().nest("/auth", auth_routes));
 
     // Build main router
     Router::new()

@@ -7,7 +7,7 @@ edition = "2021"
 # Web framework
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
-tower = { version = "0.4", features = ["timeout"] }
+tower = { version = "0.4", features = ["timeout", "util"] }
 tower-http = { version = "0.5", features = ["trace", "cors", "timeout", "limit"] }
 
 # Serialization
@@ -29,4 +29,8 @@ thiserror = "1"
 futures = "0.3"
 
 # Date/time utilities
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Authentication
+jsonwebtoken = "9"
+bcrypt = "0.15"
